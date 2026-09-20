@@ -1,1 +1,268 @@
+#!/data/data/com.termux/files/usr/bin/bash
 
+clear
+
+echo "================================"
+echo "          PHONE STATUS"
+echo "================================"
+echo
+
+echo "[CIHAZ]"
+
+ANDROID=$(getprop ro.build.version.release)
+DEVICE=$(getprop ro.product.model)
+KERNEL=$(uname -r)
+
+echo "Cihaz:    $DEVICE"
+echo "Android:  $ANDROID"
+echo "Kernel:   $KERNEL"
+echo "Uptime:   $(uptime | sed 's/.*up /up /')"
+echo
+
+echo "[RAM]"
+
+free -h
+
+RAM_TOTAL=$(free | awk '/Mem:/ {print $2}')
+RAM_AVAILABLE=$(free | awk '/Mem:/ {print $7}')
+
+if [ "$RAM_TOTAL" -gt 0 ]; then
+    RAM_AVAIL_PERCENT=$((RAM_AVAILABLE * 100 / RAM_TOTAL))
+else
+    RAM_AVAIL_PERCENT=0
+fi
+
+if [ "$RAM_AVAIL_PERCENT" -ge 40 ]; then
+    RAM_STATUS="IYI"
+elif [ "$RAM_AVAIL_PERCENT" -ge 20 ]; then
+    RAM_STATUS="ORTA"
+else
+    RAM_STATUS="BASKI"
+fi
+
+echo "RAM kullanilabilir: %$RAM_AVAIL_PERCENT"
+echo "RAM durumu: $RAM_STATUS"
+echo
+
+echo "[CPU]"
+
+CPU_CORES=$(nproc)
+TOP_OUTPUT=$(top -b -n 1)
+
+IDLE=$(echo "$TOP_OUTPUT" |
+    sed -n 's/.* \([0-9.][0-9.]*\)%idle.*/\1/p' |
+    head -n 1)
+
+if [ -n "$IDLE" ]; then
+    IDLE_INT=${IDLE%.*}
+    TOTAL_CPU=$((CPU_CORES * 100))
+    BUSY=$((TOTAL_CPU - IDLE_INT))
+    CPU_BUSY=$((BUSY * 100 / TOTAL_CPU))
+    CPU_IDLE=$((100 - CPU_BUSY))
+else
+    CPU_BUSY=0
+    CPU_IDLE=0
+fi
+
+echo "Cekirdek: $CPU_CORES"
+echo "CPU kullanimi: %$CPU_BUSY"
+echo "CPU bosluk: %$CPU_IDLE"
+
+if [ "$CPU_BUSY" -ge 70 ]; then
+    CPU_STATUS="YUKSEK"
+elif [ "$CPU_BUSY" -ge 30 ]; then
+    CPU_STATUS="ORTA"
+else
+    CPU_STATUS="RAHAT"
+fi
+
+echo "CPU durumu: $CPU_STATUS"
+echo
+
+echo "[CEKIRDEKLER]"
+
+ONLINE_MASK=$(cat /sys/devices/system/cpu/online 2>/dev/null)
+
+ONLINE_COUNT=0
+OFFLINE_COUNT=0
+
+for CPU_PATH in /sys/devices/system/cpu/cpu[0-9]*; do
+    if [ -f "$CPU_PATH/online" ]; then
+        STATE=$(cat "$CPU_PATH/online" 2>/dev/null)
+
+        if [ "$STATE" = "1" ]; then
+            ONLINE_COUNT=$((ONLINE_COUNT + 1))
+        else
+            OFFLINE_COUNT=$((OFFLINE_COUNT + 1))
+        fi
+    else
+        ONLINE_COUNT=$((ONLINE_COUNT + 1))
+    fi
+done
+
+echo "Online mask: $ONLINE_MASK"
+echo "Online: $ONLINE_COUNT"
+echo "Offline: $OFFLINE_COUNT"
+echo
+
+echo "[CPU FREKANSLARI]"
+
+for FREQ in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq; do
+    [ -f "$FREQ" ] || continue
+
+    CPU_DIR=$(dirname "$(dirname "$FREQ")")
+    CPU_NAME=$(basename "$CPU_DIR")
+    VALUE=$(cat "$FREQ" 2>/dev/null)
+
+    if [ -n "$VALUE" ]; then
+        echo "$CPU_NAME: $((VALUE / 1000)) MHz"
+    fi
+done
+
+echo
+
+echo "[CPU POLITIKALARI]"
+
+for POLICY in /sys/devices/system/cpu/cpufreq/policy*; do
+    [ -d "$POLICY" ] || continue
+
+    NAME=$(basename "$POLICY")
+    AFFECTED=$(cat "$POLICY/affected_cpus" 2>/dev/null)
+    CUR=$(cat "$POLICY/scaling_cur_freq" 2>/dev/null)
+    MIN=$(cat "$POLICY/scaling_min_freq" 2>/dev/null)
+    MAX=$(cat "$POLICY/scaling_max_freq" 2>/dev/null)
+
+    echo "$NAME"
+
+    [ -n "$AFFECTED" ] && echo "  CPU: $AFFECTED"
+    [ -n "$CUR" ] && echo "  Current: $((CUR / 1000)) MHz"
+    [ -n "$MIN" ] && echo "  Min: $((MIN / 1000)) MHz"
+    [ -n "$MAX" ] && echo "  Max: $((MAX / 1000)) MHz"
+done
+
+echo
+
+echo "[SISTEM YUKU]"
+
+UPTIME_OUTPUT=$(uptime)
+
+LOAD=$(echo "$UPTIME_OUTPUT" |
+    awk -F'load average: ' '{print $2}' |
+    awk -F',' '{print $1}' |
+    tr -d ' ')
+
+LOAD_5=$(echo "$UPTIME_OUTPUT" |
+    awk -F'load average: ' '{print $2}' |
+    awk -F',' '{print $2}' |
+    tr -d ' ')
+
+LOAD_15=$(echo "$UPTIME_OUTPUT" |
+    awk -F'load average: ' '{print $2}' |
+    awk -F',' '{print $3}' |
+    tr -d ' ')
+
+echo "1 dk : $LOAD"
+echo "5 dk : $LOAD_5"
+echo "15 dk: $LOAD_15"
+echo "CPU  : $CPU_CORES"
+
+LOAD_INT=${LOAD%.*}
+
+if [ "$LOAD_INT" -ge $((CPU_CORES * 2)) ]; then
+    LOAD_STATUS="YUKSEK"
+elif [ "$LOAD_INT" -ge "$CPU_CORES" ]; then
+    LOAD_STATUS="ORTA"
+else
+    LOAD_STATUS="NORMAL"
+fi
+
+echo "Load durumu: $LOAD_STATUS"
+echo
+
+echo "[SWAP]"
+
+SWAP_TOTAL=$(free | awk '/Swap:/ {print $2}')
+SWAP_USED=$(free | awk '/Swap:/ {print $3}')
+
+if [ "$SWAP_TOTAL" -gt 0 ]; then
+    SWAP_PERCENT=$((SWAP_USED * 100 / SWAP_TOTAL))
+else
+    SWAP_PERCENT=0
+fi
+
+echo "Kullanim: %$SWAP_PERCENT"
+
+if [ "$SWAP_PERCENT" -ge 70 ]; then
+    SWAP_STATUS="YUKSEK"
+elif [ "$SWAP_PERCENT" -ge 40 ]; then
+    SWAP_STATUS="ORTA"
+else
+    SWAP_STATUS="NORMAL"
+fi
+
+echo "Swap durumu: $SWAP_STATUS"
+echo
+
+echo "[DEPOLAMA]"
+
+DISK_LINE=$(df -h "$HOME" | tail -n 1)
+
+DISK_TOTAL=$(echo "$DISK_LINE" | awk '{print $2}')
+DISK_USED=$(echo "$DISK_LINE" | awk '{print $3}')
+DISK_FREE=$(echo "$DISK_LINE" | awk '{print $4}')
+DISK_PERCENT=$(echo "$DISK_LINE" | awk '{print $5}' | tr -d '%')
+
+echo "Toplam: $DISK_TOTAL"
+echo "Kullanilan: $DISK_USED"
+echo "Bos: $DISK_FREE"
+echo "Kullanim: %$DISK_PERCENT"
+
+if [ "$DISK_PERCENT" -ge 90 ]; then
+    DISK_STATUS="YUKSEK"
+elif [ "$DISK_PERCENT" -ge 75 ]; then
+    DISK_STATUS="ORTA"
+else
+    DISK_STATUS="IYI"
+fi
+
+echo "Depolama durumu: $DISK_STATUS"
+echo
+
+echo "[TERMUX]"
+
+PROCESS_COUNT=$(ps | tail -n +2 | wc -l)
+
+echo "Gorunen proses: $PROCESS_COUNT"
+echo
+
+echo "================================"
+echo "         GENEL DURUM"
+echo "================================"
+
+echo "RAM       : $RAM_STATUS"
+echo "CPU       : $CPU_STATUS"
+echo "Cekirdek  : $ONLINE_COUNT/$CPU_CORES ONLINE"
+echo "SWAP      : $SWAP_STATUS"
+echo "Depolama  : $DISK_STATUS"
+echo "Load      : $LOAD_STATUS"
+
+echo
+
+if [ "$RAM_STATUS" = "BASKI" ]; then
+    echo "DURUM: RAM BASKISI"
+elif [ "$SWAP_STATUS" = "YUKSEK" ]; then
+    echo "DURUM: SWAP BASKISI"
+elif [ "$DISK_STATUS" = "YUKSEK" ]; then
+    echo "DURUM: DEPOLAMA BASKISI"
+elif [ "$CPU_STATUS" = "YUKSEK" ]; then
+    echo "DURUM: CPU YUKU"
+elif [ "$LOAD_STATUS" = "YUKSEK" ] && [ "$CPU_STATUS" = "RAHAT" ]; then
+    echo "DURUM: STABIL - LOAD ANOMALISI"
+else
+    echo "DURUM: NORMAL"
+fi
+
+echo
+echo "================================"
+echo "       STATUS TAMAMLANDI"
+echo "================================"
